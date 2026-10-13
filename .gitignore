@@ -218,3 +218,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# 원본 데이터·환자별 라벨 파일
+data/
+images/
+sample_images/
+
+# 임시 노트북 파일
+.ipynb_checkpoints/
