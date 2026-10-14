@@ -1,7 +1,7 @@
 # PyCharm용 CXR 전처리 · Dataset · DataLoader
 
 샘플 이미지 전처리, 크기 조정, 정규화, Dataset·DataLoader 준비를 구현했습니다.
-기준은 `CXR_Preprocessing_Progress (1).md`와 이전 대화의 3채널 전환 결정입니다.
+기준은 `CXR_Preprocessing_Progress (1).md`와 3채널 전환 결정입니다.
 
 ## 반영한 기준
 
