@@ -1,132 +1,105 @@
-# CSV를 기다리는 동안 준비하는 DenseNet121 모델 코드
+# DenseNet121 U-multiclass 전체 데이터 학습
 
-대상: 심비대(Cardiomegaly), 폐부종(Edema), 흉수(Pleural Effusion).
-PyCharm에서 사용할 수 있는 DenseNet121 + U-multiclass 준비 코드입니다.
-전처리와 CSV·이미지 연결은 팀원이 맡은 작업을 그대로 이어받습니다.
+MIMIC-CXR의 심비대, 폐부종, 흉수를 각각 음성·양성·불확실의 3클래스로 예측하는 학습 코드입니다. 기존 파일럿 실험 이후 서버에서 사용한 코드 3개를 보관합니다.
 
-## 1. 지금 실행할 수 있는 것
+## 실험 구성
 
-1. ZIP을 풀고 `model_training.py`를 PyCharm 프로젝트에 넣습니다.
-2. 프로젝트 인터프리터에 `torch`, `torchvision`을 설치합니다.
-   GPU 본 학습용 설치는 아래 공식 안내에서 OS와 CUDA 환경에 맞게 선택합니다.
-   https://pytorch.org/get-started/locally/
-3. `model_training.py`를 우클릭하여 Run하거나 터미널에서 실행합니다.
+| 순서 | 파일 | 훈련 손실 | 검증 손실 | Scheduler | 추가 보고 |
+|---|---|---|---|---|---|
+| 1 | `train_full.py` | 가중치 없는 Cross Entropy | 가중치 없는 Cross Entropy | 없음 | 3클래스 Macro F1 |
+| 2 | `train_full_weighted.py` | 클래스 가중치 Cross Entropy | 가중치 없는 Cross Entropy | 없음 | 불확실 클래스 F1 |
+| 3 | `train_full_weighted_scheduler.py` | 2번과 동일 | 가중치 없는 Cross Entropy | ReduceLROnPlateau | 불확실 F1, 확정 라벨 AUROC, 학습률 |
+
+첨부받은 원본 Python 파일을 수정 없이 포함했습니다. Scheduler 파일의 `source_sha256`이 첨부한 `train_full_weighted.py`의 해시와 일치합니다.
+
+## 공통 모델과 설정
+
+| 항목 | 코드에서 확인한 설정 |
+|---|---|
+| Backbone | DenseNet121, ImageNet 사전학습 가중치 |
+| 학습 범위 | 모델 전체 파라미터를 AdamW에 전달 |
+| 입력 | 3채널 224 × 224 |
+| 출력 | `[배치, 소견 3개, 클래스 3개]` |
+| 소견 순서 | Cardiomegaly → Edema → Pleural Effusion |
+| 클래스 순서 | 음성 0 → 양성 1 → 불확실 2 |
+| 원본 라벨 매핑 | 0→0, 1→1, -1→2 |
+| Optimizer | AdamW |
+| 초기 학습률 | 0.0001 |
+| Weight decay | 0.0001 |
+| Batch size | 4 |
+| 최대 Epoch | 10 |
+| Early stopping | 검증 손실이 연속 3회 개선되지 않으면 종료 |
+| Seed | 42 |
+| 최적 모델 선택 기준 | 검증 손실 최소 |
+
+세 소견별 Cross Entropy를 계산해 평균합니다. 불확실은 독립된 세 번째 클래스로 손실과 Macro F1에 포함합니다. U-ignore처럼 불확실 라벨을 손실에서 제외하는 코드가 아닙니다.
+
+가중치 실험은 학습 데이터에서 소견별 음성·양성·불확실 빈도를 구한 뒤 `1 / sqrt(빈도)`를 계산하고, 소견별 평균 가중치가 1이 되도록 정규화합니다. 검증 손실은 가중치를 사용하지 않습니다. 코드에서 학습 데이터가 9,999장인지 검사하고, 학습 데이터에 빠진 클래스가 있으면 오류를 냅니다.
+
+Scheduler는 검증 손실을 모니터링하며, 연속 2회 개선되지 않으면 다음 epoch의 학습률을 절반으로 줄입니다. 설정은 `patience=1`, `factor=0.5`, `min_lr=0.000001`입니다. 학습률 감소 시 early stopping 카운터를 초기화하지 않습니다.
+
+## 지표 해석
+
+- **Macro F1**: 소견별 3클래스 F1을 구한 후 전체 9개 값을 평균합니다. 관측·예측이 모두 없는 클래스의 F1은 0으로 기록합니다.
+- **불확실 F1**: 각 소견의 클래스 2 F1입니다. 가중치 및 Scheduler 코드가 출력합니다.
+- **AUROC**: Scheduler 코드에서만 계산합니다. 소견별 원본 0/1 확정 라벨만 평가하고, 불확실 라벨 2는 AUROC 계산에서 제외합니다. 점수는 3클래스 softmax 중 양성 클래스 확률이며 음성·양성만으로 재정규화하지 않습니다.
+- 세 소견 모두 AUROC를 계산할 수 있을 때 평균 AUROC를 보고합니다. 한 소견의 확정 라벨이 한 클래스뿐이면 해당 AUROC와 평균은 미정의로 둡니다.
+- AUROC는 보고용이며 체크포인트 선택은 검증 손실로 수행합니다.
+- 테스트 DataLoader는 생성하지만 학습·검증 함수에 넣지 않습니다. 별도 테스트 평가가 필요합니다.
+
+U-ignore의 2클래스 Macro F1과 여기의 3클래스 Macro F1은 집계 대상이 다릅니다.
+
+## 프로젝트 경로와 기존 의존 파일
+
+코드에 다음 서버 경로가 직접 지정되어 있습니다.
+
+| 항목 | 현재 설정 |
+|---|---|
+| 프로젝트 | `/home/team30103/chest-xray-multilabel` |
+| CSV 폴더 | 프로젝트의 `data/processed/` |
+| 이미지 폴더 | `/home/team30103/physionet_data` |
+| 이미지 배치 방식 | `image_layout="flat"` |
+| DataLoader 키 | `train`, `validate`, `test` |
+
+기존 프로젝트 최상위의 **`cxr_preprocessing.py`가 필요합니다.** 이번 묶음에는 학습 코드 3개만 포함했으므로 기존 전처리 모듈을 함께 사용해야 합니다. 필요한 실행 환경은 기존 서버의 Python·PyTorch·torchvision 환경과 전처리 모듈 의존 패키지입니다. 가중치 코드는 pandas, Scheduler 코드는 scikit-learn도 사용합니다. 세 스크립트는 CUDA가 없으면 실행을 중단합니다.
+
+세 파일에는 `TRAIN_CSV = ... / "train_final.csv"`, `VAL_CSV = ... / "val.csv"`, `TEST_CSV = ... / "test.csv"`가 선언되어 있습니다. 그러나 실제 DataLoader 호출에는 이 개별 파일 경로를 전달하지 않고 `csv_dir=CSV_DIR`만 전달합니다. **실제로 읽는 CSV 파일명과 전처리는 기존 `cxr_preprocessing.py`의 구현이 결정합니다.** 이 세 파일만으로 실제 학습에 사용한 모든 CSV와 전체 데이터 수를 확정할 수는 없습니다.
+
+다른 서버에서 재실행할 때는 각 파일의 `PROJECT_DIR`, 이미지 경로, 이미지 배치 방식 및 기존 전처리 모듈의 CSV 선택 규칙을 실제 환경에 맞춥니다. 문서화 과정에서는 학습 이력을 보존하기 위해 원본 경로를 바꾸지 않았습니다.
+
+## 저장 위치
+
+| 파일 | 현재 결과 저장 경로 |
+|---|---|
+| `train_full.py` | `runs/pilot/train_.../` |
+| `train_full_weighted.py` | `runs/full_weighted/train_.../` |
+| `train_full_weighted_scheduler.py` | `runs/full_weighted_scheduler/train_.../` |
+
+**기본 코드의 저장 폴더 이름은 `pilot`로 남아 있습니다.** 주석과 출력 문구에도 pilot·시험 학습 표현이 남아 있습니다. 이 이름만으로 파일럿 데이터로 학습했다고 판단하면 안 됩니다. 데이터 규모는 실행 당시의 DataLoader 출력과 CSV로 확인합니다.
+
+각 실행 폴더에는 `best_model.pth`, `config.json`, `history.csv`, `best_val_metrics.json`이 저장됩니다. Scheduler 코드는 체크포인트에 Scheduler 상태와 학습률도 저장합니다.
+
+## 실행 예시
+
+저장소에서 이 문서와 세 파일을 `full_training/densenet121_umulticlass/`에 두는 구성을 기준으로 합니다. `PROJECT_DIR`이 기존 서버 프로젝트 경로이고, 해당 경로의 전처리 모듈과 데이터가 준비된 상태에서 실행합니다.
 
 ```bash
-python model_training.py
+python -u full_training/densenet121_umulticlass/train_full.py
+python -u full_training/densenet121_umulticlass/train_full_weighted.py
+python -u full_training/densenet121_umulticlass/train_full_weighted_scheduler.py
 ```
 
-CSV나 실제 이미지가 없어도 실행됩니다. 사전학습 가중치 다운로드도 하지 않습니다.
-임시 이미지 2장과 임의 정답을 만들어 입력·출력, 학습 1회, 검증, 저장·복원을 확인합니다.
-CPU에서는 시간이 걸릴 수 있습니다.
+위 명령은 각각 학습을 시작합니다. GitHub에 기록만 올리려면 재학습할 필요는 없습니다. 세 파일은 학습 시작 부분이 최상위에 있으므로 **import해도 데이터 연결과 학습이 실행됩니다.** 모델 클래스만 가져오기 위한 모듈로 직접 import하지 마세요.
 
-확인할 형태:
+## 검증 및 결과 범위
 
-```text
-이미지: (2, 3, 224, 224) torch.float32
-정답: (2, 3) torch.int64
-모델 출력: (2, 3, 3)
-동작 확인 성공: 학습 1회, 검증, 저장, 복원, 확률 합 확인
-```
+업로드 정리 과정에서 다음을 확인했습니다.
 
-손실/F1 수치는 실행마다 환경에 따라 달라질 수 있으며 실제 모델 성능이 아닙니다.
-임시 모델은 `runs/smoke_날짜시간/demo_checkpoint.pth`에 저장됩니다.
-실제 예측용 불러오기에서는 이 파일을 기본적으로 차단합니다.
+- 원본 3개 파일의 Python 문법과 ZIP 내 원본 일치 여부.
+- Scheduler가 기록한 원본 SHA-256과 첨부 가중치 파일의 일치.
+- 가중치 코드와 Scheduler 코드의 클래스 가중치 계산 및 손실 수식이 동일함.
+- Scheduler의 AUROC 함수만 분리해, 함수 내 사전 검사와 같은 예제로 계산 결과를 확인함.
 
-## 2. 코드를 읽는 순서
+정리 환경에는 PyTorch·CUDA·이미지·CSV 및 실제 `cxr_preprocessing.py`가 없어 전체 학습과 Scheduler 사전 검사는 실행하지 않았습니다. 실제 실행 로그와 체크포인트도 이번 첨부에는 포함되지 않았으므로, 이 문서는 코드 차이를 정리하며 실험 성능의 우열을 확정하지 않습니다.
 
-| 함수·클래스 | 역할 |
-| --- | --- |
-| `CXRModel` | 사전학습 선택, 마지막 출력층 9개로 변경, `[B, 3, 3]` 출력 |
-| `check_batch` | 이미지·정답 형식과 라벨 값 확인 |
-| `multiclass_loss` | 소견별 CrossEntropyLoss를 동일 비중으로 평균 |
-| `run_epoch` | 학습 또는 검증 1회, 손실·F1·혼동행렬 계산 |
-| `fit` | 여러 epoch 학습, val loss 기준 최적 모델 저장, 조기 종료 |
-| `load_checkpoint` | 모델과 설정 복원 |
-| `predict_probabilities` | 클래스 차원에 softmax를 적용해 확률 반환 |
-| `smoke_check` | CSV 없는 동작 확인 |
-
-`B`는 한 배치의 이미지 수입니다. 소견 순서는 심비대 → 폐부종 → 흉수입니다.
-각 소견의 클래스 순서는 음성 0 → 양성 1 → 불확실 2입니다.
-CSV의 원본 `-1`을 Dataset에서 `2`로 변환하고 `torch.long`으로 반환합니다.
-여기서 불확실은 판독문 라벨이며, 모델의 낮은 신뢰도와 같은 뜻은 아닙니다.
-
-## 3. 팀원에게 받을 인터페이스
-
-- Dataset·DataLoader 생성 코드와 train/val/test CSV 및 실제 이미지 경로 설정.
-- 배치 반환은 `(images, labels)` 두 값으로 통일합니다.
-- 이미지: `[B, 3, 224, 224]`, `float32`.
-- 정답: `[B, 3]`, `torch.long`, 값은 0/1/2.
-- 소견 및 클래스 순서를 위 순서로 고정합니다.
-- 비율 유지 패딩·224 크기 조정, 흑백을 3채널로 복제한 뒤 0~1 변환,
-  채널 평균 `[0.485, 0.456, 0.406]`, 표준편차 `[0.229, 0.224, 0.225]` 정규화.
-- 위 정규화는 Dataset에서 한 번만 적용합니다. 모델 코드에서 다시 적용하지 않습니다.
-  이미 정규화된 이미지가 0~1 범위를 벗어나는 것은 정상입니다.
-- train만 shuffle하고 val/test는 순서를 유지합니다. 본 학습 배치 크기는 GPU에 맞춥니다.
-
-입력 검사는 형식·유한값만 확인합니다. 정규화 적용 여부, 실제 라벨 연결,
-split 중복 여부까지 자동으로 확인하는 기능은 아니므로 팀원의 점검 결과를 받습니다.
-이미지 추가 정보까지 반환하는 DataLoader라면 `run_epoch`의 배치 해체 부분을 맞춰야 합니다.
-
-## 4. 실제 데이터가 온 뒤 연결하는 방법
-
-아래는 별도 `train_real.py`에 넣을 연결 예시입니다.
-`build_loaders`와 `team_dataset`은 예시 이름이며 현재 제공 파일에는 없습니다.
-팀원의 실제 모듈·함수·경로에 맞춰 해당 부분을 바꿉니다.
-
-```python
-from model_training import CXRModel, TrainConfig, set_seed, fit, load_checkpoint
-# 아래 import는 팀원의 실제 파일/함수 이름으로 교체합니다.
-from team_dataset import build_loaders
-
-def main():
-    config = TrainConfig(epochs=10, learning_rate=1e-4, patience=3)
-    set_seed(config.seed)  # DataLoader와 모델 생성 전에 호출
-    train_loader, val_loader, test_loader = build_loaders()
-    model = CXRModel(pretrained=True)  # 첫 실행에 ImageNet 가중치 다운로드 필요
-    _, best_path = fit(model, train_loader, val_loader, config)
-    best_model, checkpoint = load_checkpoint(best_path)
-    # 설정 조정은 val에서 수행합니다. 최종 모델 확정 후 test 평가를 별도로 합니다.
-
-if __name__ == "__main__":
-    main()
-```
-
-Windows/PyCharm에서 DataLoader worker를 사용할 경우에도 위 main 보호문을 유지합니다.
-처음에는 실제 train 일부로 시험 학습합니다. 임시 데이터 테스트는
-실제 파일 읽기·CSV 연결·학습 가능성·모델 성능을 검증한 것이 아닙니다.
-
-## 5. 저장되는 것과 해석
-
-실제 학습 실행마다 `runs/train_날짜시간/`이 새로 생성됩니다.
-
-- `best_model.pth`: 최소 val loss 모델, optimizer 상태, epoch, 설정, 클래스 순서.
-- `config.json`: 입력 규격과 시작 설정.
-- `history.csv`: epoch별 학습·검증 손실과 macro F1.
-- `best_val_metrics.json`: 최적 epoch의 소견별 클래스 F1과 혼동행렬.
-
-`fit`이 반환하는 model은 마지막 epoch 상태입니다. 최적 모델을 쓸 때는
-반환된 `best_path`로 `load_checkpoint`를 실행합니다.
-이 버전은 신규 학습용이며 중단 지점부터 재개하는 기능은 아직 구현하지 않았습니다.
-선택 기준은 val loss로 고정했고 학습률 자동 조절과 클래스 가중치는 적용하지 않았습니다.
-먼저 기준 모델을 학습한 뒤 검증 결과에 따라 설정을 조정합니다.
-
-macro F1은 소견 3개 × 클래스 3개를 같은 비중으로 평균합니다.
-관측·예측이 모두 없는 클래스의 F1은 0으로 기록하며, 클래스별 support는
-혼동행렬의 행 합으로 확인할 수 있습니다. 클래스 불균형이 있으므로 loss와
-전체 F1만 보고 판단하지 말고 소견별 혼동행렬과 클래스별 F1을 함께 확인합니다.
-이 준비 코드에는 최종 test 평가, AUROC/PR-AUC, 그래프, 설명 시각화는 포함하지 않습니다.
-이진 AUROC/PR-AUC를 추가할 때는 불확실 정답의 평가 처리와 점수 정의를 먼저 정합니다.
-
-## 제공 전 실행 확인
-
-CPU, Python 3.12, torch 2.14.1+cpu, torchvision 0.29.1+cpu 환경에서
-임시 데이터 학습 1회·검증·모델 저장·복원과 복원 전후 확률 일치를 확인했습니다.
-잘못된 원본 라벨 -1 입력과 임시 모델의 실제 예측용 불러오기도 차단됨을 확인했습니다.
-실제 CXR, GPU, 팀원의 CSV·Dataset 연결 및 사전학습 다운로드는 아직 검증하지 않았습니다.
-
-## 참고 자료
-
-- DenseNet121 및 ImageNet 가중치: https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.densenet121.html
-- CrossEntropyLoss: https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
-- 모델 저장·복원: https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html
+현재 코드는 모두 최대 10 epoch + early stopping 버전입니다. 50 epoch 또는 early stopping 해제 실험은 포함하지 않습니다.
