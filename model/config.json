@@ -1,0 +1,68 @@
+{
+  "architecture": "densenet121",
+  "label_strategy": "u_ignore",
+  "class_names": [
+    "negative",
+    "positive"
+  ],
+  "class_map": {
+    "0": 0,
+    "1": 1,
+    "-1": -100
+  },
+  "target_labels": [
+    "Cardiomegaly",
+    "Edema",
+    "Pleural Effusion"
+  ],
+  "selection_metric": "minimum val loss",
+  "pretrained_imagenet": true,
+  "preprocessing": "cxr_preprocessing.py / cxr_preprocessing_uignore.py",
+  "config": {
+    "epochs": 10,
+    "learning_rate": 0.0001,
+    "weight_decay": 0.0001,
+    "patience": 3,
+    "batch_size": 4,
+    "seed": 42,
+    "image_size": 224,
+    "num_workers": 0
+  },
+  "class_weights": [
+    [
+      0.8961344361305237,
+      1.103865623474121
+    ],
+    [
+      0.7312524318695068,
+      1.2687475681304932
+    ],
+    [
+      0.9694703817367554,
+      1.0305296182632446
+    ]
+  ],
+  "train_class_counts": [
+    [
+      5728,
+      3775
+    ],
+    [
+      6695,
+      2224
+    ],
+    [
+      5070,
+      4487
+    ]
+  ],
+  "train_ignored_counts": [
+    496,
+    1080,
+    442
+  ],
+  "class_weight_method": "inverse square root; mean class weight 1 per finding",
+  "train_loss_policy": "weighted CE sum / sum of valid label weights across all findings",
+  "validation_loss_policy": "unweighted CE sum / known-label count across all findings",
+  "baseline_metrics_path": "/home/team30103/chest-xray-multilabel/runs/uignore_full/train_20261019_112210_839827/best_val_metrics.json"
+}
