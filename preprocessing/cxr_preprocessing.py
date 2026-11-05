@@ -17,9 +17,10 @@ from torch.utils.data import Dataset, DataLoader
 
 
 # 1. 사용자 설정 ---------------------------------------------------------------
-# 이 파일을 프로젝트 최상위에 놓으면 기본 경로를 그대로 사용할 수 있습니다.
+# 파일 위치: 프로젝트/preprocessing/cxr_preprocessing.py
+# 프로젝트 최상위 경로를 기준으로 데이터 경로를 설정합니다.
 # 외부 폴더를 쓰려면 예: IMAGE_ROOT = Path(r"D:\mimic-cxr-jpg")
-PROJECT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = Path(__file__).resolve().parent.parent
 CSV_DIR = PROJECT_DIR / "data" / "processed"
 
 IMAGE_ROOT = Path("/home/team30103/physionet_data")
@@ -47,11 +48,6 @@ TARGET_LABELS = ["Cardiomegaly", "Edema", "Pleural Effusion"]
 CLASS_MAP = {0: 0, 1: 1, -1: 2}
 MEAN = (0.485, 0.456, 0.406)
 STD = (0.229, 0.224, 0.225)
-# CSV_NAMES = {
-#     "train": "pilot_train.csv",
-#     "validate": "pilot_val.csv",
-#     "test": "pilot_test.csv",
-# }
 
 # 2. 최종 CSV 읽기와 실제 파일 경로 연결 --------------------------------------
 def validate_labels(df):
