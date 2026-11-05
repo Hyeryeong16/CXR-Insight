@@ -1,7 +1,14 @@
-"""CXR Insight research dashboard (v5): enlarged results, collapsible Grad-CAM.
-Save as streamlit-web/app/streamlit_app.py in the project root.
-Requires cxr_preprocessing.py and test_hr/cxr_inference_uignore_weighted_predicted_gradcam.py at the project root.
+"""CXR Insight Streamlit dashboard.
+
+File: app/streamlit_app.py
+
+Uses:
+- preprocessing/cxr_preprocessing.py
+- inference/cxr_inference.py
+- app/assets/Pretendard-Regular.ttf
+- app/assets/Pretendard-Bold.ttf
 """
+
 from __future__ import annotations
 
 from io import BytesIO
@@ -11,7 +18,7 @@ from pathlib import Path
 import sys
 import time
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -27,8 +34,9 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
-from cxr_preprocessing import MEAN, STD, preprocess_image
-from test_hr.cxr_inference_uignore_weighted_predicted_gradcam import (
+from preprocessing.cxr_preprocessing import MEAN, STD, preprocess_image
+
+from inference.cxr_inference import (
     CXRInference,
     MODEL_PATH,
     THRESHOLDS,
@@ -186,7 +194,7 @@ def korean_pdf_font() -> str:
     regular_name = "CXR_Pretendard"
     bold_name = "CXR_Pretendard_Bold"
 
-    font_dir = PROJECT_ROOT / "streamlit-web" / "app" / "assets"
+    font_dir = PROJECT_ROOT / "app" / "assets"
 
     if regular_name not in pdfmetrics.getRegisteredFontNames():
         pdfmetrics.registerFont(
