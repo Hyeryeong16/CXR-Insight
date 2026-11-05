@@ -3,14 +3,16 @@
 기존 cxr_preprocessing.py의 이미지 전처리 및 데이터 검증을 재사용한다.
 불확실 레이블을 2에서 -100으로 변환하여 Loss 계산에서 제외한다.
 
-프로젝트 최상위 폴더에 배치한다.
+프로젝트 preprocessing/ 폴더에 배치한다.
 """
 
 from __future__ import annotations
 
 import torch
 
-from cxr_preprocessing import build_dataloaders as _build_multiclass_dataloaders
+from preprocessing.cxr_preprocessing import (
+    build_dataloaders as _build_multiclass_dataloaders
+)
 
 IGNORE_INDEX = -100
 TARGET_LABELS = ("Cardiomegaly", "Edema", "Pleural Effusion")
