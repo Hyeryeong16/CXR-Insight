@@ -10,23 +10,20 @@ from torch import nn
 from torchvision.models import densenet121
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_DIR))
-from cxr_preprocessing import preprocess_image, MEAN, STD
+
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+from preprocessing.cxr_preprocessing import preprocess_image, MEAN, STD
 
 
 # ============================================================
 # 사용자 설정
-# 파일 위치: 프로젝트/test_hr/cxr_inference.py
+# 파일 위치: 프로젝트/inference/cxr_inference.py
 # ============================================================
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
-
 # 1. 사용할 모델
-MODEL_PATH = (
-    PROJECT_DIR / "runs" / "uignore_weighted_full"
-    / "train_20261019_165121_403875"
-    / "best_model.pth"
-)
+MODEL_PATH = PROJECT_DIR / "model" / "best_model.pth"
 
 # 2. 이미지 폴더
 IMAGE_ROOT = Path("/home/team30103/physionet_data")
@@ -40,7 +37,7 @@ TEST_CSV = (
 IMAGE_INDEX = 4
 
 # 5. 결과 저장 위치
-OUTPUT_ROOT = PROJECT_DIR / "test_hr" / "results" / "weighted"
+OUTPUT_ROOT = PROJECT_DIR / "evaluation" / "results" / "inference"
 
 
 # ============================================================
