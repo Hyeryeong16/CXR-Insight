@@ -218,3 +218,43 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# ==================================================
+# CXR Insight - Project-specific exclusions
+# ==================================================
+
+# MIMIC-CXR restricted data
+/data/processed/
+/data/raw/
+/data/images/
+*.dcm
+*.jpg
+*.jpeg
+
+# Model checkpoints and weights
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+
+# Training outputs
+/runs/
+/checkpoints/
+/logs/
+/wandb/
+/lightning_logs/
+
+# Patient-level predictions and inference outputs
+/evaluation/results/inference/
+*predictions*.csv
+*predictions*.json
+
+# Local settings
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
